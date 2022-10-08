@@ -1,43 +1,39 @@
 'use strict';
 
-// const url = 'ws://127.0.0.1:8001/';
-const url = 'http://127.0.0.1:8001/';
+const transport = {};
 
-// const scaffold = (url, structure) => {
-//   const api = {};
-//   const transport = url.split(':')[0];
-//   if (transport === 'ws') {
-//     const socket = new WebSocket(url);
-//   }
-//   const services = Object.keys(structure);
-//   for (const serviceName of services) {
-//     api[serviceName] = {};
-//     const service = structure[serviceName];
-//     const methods = Object.keys(service);
-//     for (const methodName of methods) {
-//       api[serviceName][methodName] = (...args) => new Promise((resolve) => {
-//         const packet = { name: serviceName, method: methodName, args };
-//         socket.send(JSON.stringify(packet));
-//         socket.onmessage = (event) => {
-//           const data = JSON.parse(event.data);
-//           resolve(data);
-//         };
-//       });
-//     }
-//   }
+transport.ws = (url) => (structure) => {
+  const api = {};
+  const socket = new WebSocket(url);
+  const services = Object.keys(structure);
+  for (const serviceName of services) {
+    api[serviceName] = {};
+    const service = structure[serviceName];
+    const methods = Object.keys(service);
+    for (const methodName of methods) {
+      api[serviceName][methodName] = (...args) => new Promise((resolve) => {
+        const packet = { name: serviceName, method: methodName, args };
+        socket.send(JSON.stringify(packet));
+        socket.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          resolve(data);
+        };
+      });
+    }
+  }
 
-//   return api;
-// };
-
-const crud = {
-  create: 'POST',
-  read: 'GET',
-  update: 'PUT',
-  delete: 'DELETE',
-  find: 'POST',
+  return api;
 };
 
-const scaffold = (url, structure) => {
+transport.http = (url) => (structure) => {
+  const crud = {
+    create: 'POST',
+    read: 'GET',
+    update: 'PUT',
+    delete: 'DELETE',
+    find: 'GET',
+  };
+
   const api = {};
   const basePath = url.endsWith('/') ?
     url.substring(0, url.length - 1) : url;
@@ -49,29 +45,35 @@ const scaffold = (url, structure) => {
     const service = structure[serviceName];
     const methods = Object.keys(service);
     for (const methodName of methods) {
+      const argsSchema = structure[serviceName][methodName];
       api[serviceName][methodName] = (...args) =>
         new Promise((resolve, reject) => {
-          // const packet = { name: serviceName, method: methodName, args };
           const method = crud[methodName];
-          const uri = [basePath, serviceName];
-          const argsSchema = structure[serviceName][methodName];
+          const uriParts = [basePath, serviceName];
           const options = { method };
+          const query = {};
           let payload = {};
           for (const [i, key] of argsSchema.entries()) {
-            if (key === 'id') uri.push(args[i]);
-            if (typeof args[i] === 'object') payload = {
+            if (key === 'id') {
+              uriParts.push(args[i]);
+              continue;
+            }
+            if (key === 'mask') {
+              query.mask = args[i];
+              continue;
+            }
+            if (key === 'record') payload = {
               ...payload,
               ...args[i]
             };
           }
+          let uri = uriParts.join('/');
+          if (Object.keys(query).length > 0)
+            uri = `${uri}?${new URLSearchParams(query)}`;
           if (Object.keys(payload).length > 0)
             options.body = JSON.stringify(payload);
-          // const idIndex = argsSchema.indexOf('id');
-          // const recordIndex = argsSchema.indexOf('record');
-          // const payload = recordIndex ? args[recordIndex] : {};
-          // if (idIndex >= 0) uri.push(args[idIndex]);
           console.log({ argsSchema, uri, method, options });
-          fetch(uri.join('/'), options)
+          fetch(uri, options)
             .then((res) => {
               const { status } = res;
               if (!regex.test(status)) {
@@ -86,7 +88,8 @@ const scaffold = (url, structure) => {
   return api;
 };
 
-const api = scaffold(url, {
+
+const structure = {
   users: {
     create: ['record'],
     read: ['id'],
@@ -98,31 +101,18 @@ const api = scaffold(url, {
     read: ['id'],
     find: ['mask'],
   }
-});
+};
 
-// const api = scaffold({
-//   users: {
-//     create: ['record'],
-//     read: ['id'],
-//     update: ['id', 'record'],
-//     delete: ['id'],
-//     find: ['mask'],
-//   },
-//   countries: {
-//     read: ['id'],
-//     find: ['mask'],
-//   }
-// });
+const scaffold = (url) => {
+  const protocol = url.startsWith('ws:') ? 'ws' : 'http';
+  return transport[protocol](url);
+};
 
-// socket.addEventListener('open', async () => {
-//   const userData = await api.users.read(2);
-//   const countryData = await api.countries.read(2);
-//   console.dir({ userData, countryData });
-// });
+// const HOST_URL = 'ws://127.0.0.1:8001/';
+const HOST_URL = 'http://127.0.0.1:8001/';
 
 (async () => {
-  const userData = await api.users.update(22, {
-    login: 'testuser', password: '345679'
-  });
+  const api = await scaffold(HOST_URL)(structure);
+  const userData = await api.users.read(4);
   console.dir({ userData });
 })();

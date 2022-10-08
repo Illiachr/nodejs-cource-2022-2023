@@ -68,4 +68,4 @@ class Logger {
   }
 }
 
-module.exports = new Logger('./log');
+module.exports = (options) => new Logger(options);

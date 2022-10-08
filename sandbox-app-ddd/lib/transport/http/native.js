@@ -1,8 +1,16 @@
 'use strict';
 
 const http = require('node:http');
-const config = require('./config.json');
-const console = require(config.logger);
+
+const HEADERS = {
+  'X-XSS-Protection': '1; mode=block',
+  'X-Content-Type-Options': 'nosniff',
+  'Strict-Transport-Security': 'max-age=31536000; includeSubdomains; preload',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'OPTIONS, GET, OPTIONS, PUT, DELETE',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Content-Type': 'application/json; charset=UTF-8',
+};
 
 const crud = {
   get: 'read',
@@ -13,18 +21,6 @@ const crud = {
   delete: 'delete'
 };
 
-const preflightHeaders = {
-  'Access-Control-Allow-Origin': '*', /* @dev First, read about security */
-  'Access-Control-Allow-Methods': 'OPTIONS, GET, POST, PUT, DELETE',
-  'Access-Control-Max-Age': 2592000, // 30 days
-  /** add other headers as per requirement */
-};
-
-const headers = {
-  'Content-Type': 'application/json',
-  'Access-Control-Allow-Origin': '*'
-};
-
 const receivePayload = async (req) => {
   const buffers = [];
   for await (const chunk of req) buffers.push(chunk);
@@ -32,26 +28,32 @@ const receivePayload = async (req) => {
   return JSON.parse(data);
 };
 
-module.exports = (routing, port, ctxPathIdx = 1) => {
+module.exports = (routing, console, options) => {
+  const {
+    port,
+    host,
+    version = 'v1'
+  } = options;
+
   const routeHandler = async (req, res) => {
     const { method, url, socket } = req;
-    const [ctxPath, id] = url.substring(ctxPathIdx).split('/');
-    const payload = method.toLowerCase() === 'post' ?
+    const [ctxPath, id] = url.substring(1).split('/');
+    const payload = ['post', 'put'].includes(method.toLowerCase()) ?
       await receivePayload(req) : null;
     if (req.method === 'OPTIONS') {
       console.log(`${socket.remoteAddress} ${method} ${url}`);
-      res.writeHead(204, preflightHeaders);
+      res.writeHead(204, HEADERS);
       return res.end();
     }
     if (id && !parseInt(id, 10)) {
-      res.writeHead(400, headers);
+      res.writeHead(400, HEADERS);
       return res.end(JSON.stringify({
         message: 'ID should contain only numbers'
       }));
     }
     const entity = routing[ctxPath];
     if (!entity) {
-      res.writeHead(400, headers);
+      res.writeHead(400, HEADERS);
       return res.end(JSON.stringify({ message: 'Route not found' }));
     }
     const procedure = method.toLowerCase() === 'post' ?
@@ -60,7 +62,7 @@ module.exports = (routing, port, ctxPathIdx = 1) => {
     console.log({ procedure });
     const handler = entity[procedure];
     if (!handler) {
-      res.writeHead(400, headers);
+      res.writeHead(400, HEADERS);
       return res.end(JSON.stringify({ message: 'Method not defined' }));
     }
     const src = handler.toString();
@@ -75,12 +77,12 @@ module.exports = (routing, port, ctxPathIdx = 1) => {
     console.log(`${socket.remoteAddress} ${method} ${url}`);
     const body = await handler(...args);
     if (procedure === 'read') {
-      res.writeHead(200, headers);
+      res.writeHead(200, HEADERS);
       return res.end(JSON.stringify(body.rows));
     }
 
     if (procedure === 'read' || procedure === 'find') {
-      res.writeHead(200, headers);
+      res.writeHead(200, HEADERS);
       return res.end(JSON.stringify(body.fields));
     }
 
@@ -89,7 +91,7 @@ module.exports = (routing, port, ctxPathIdx = 1) => {
       const replyBody = statusCode === 500 ?
         { message: 'Internal error' } :
         { id: body.rows[0].id };
-      res.writeHead(statusCode, headers);
+      res.writeHead(statusCode, HEADERS);
       return res.end(JSON.stringify(replyBody));
     }
 
@@ -98,7 +100,7 @@ module.exports = (routing, port, ctxPathIdx = 1) => {
       const replyBody = statusCode === 404 ?
         { message: 'ID not found' } :
         { id: body.rows[0].id };
-      res.writeHead(statusCode, headers);
+      res.writeHead(statusCode, HEADERS);
       return res.end(JSON.stringify(replyBody));
     }
 
@@ -107,11 +109,11 @@ module.exports = (routing, port, ctxPathIdx = 1) => {
       const replyBody = statusCode === 404 ?
         { message: 'ID not found' } :
         { id: body.rows[0].id };
-      res.writeHead(statusCode, headers);
+      res.writeHead(statusCode, HEADERS);
       return res.end(JSON.stringify(replyBody));
     }
 
-    res.writeHead(405, headers);
+    res.writeHead(405, HEADERS);
     res.end(JSON.stringify({
       message: `${method} is not allowed for the request.`
     }));
@@ -119,8 +121,8 @@ module.exports = (routing, port, ctxPathIdx = 1) => {
 
   const server = http.createServer(routeHandler);
 
-  server.listen(port, () => {
-    console.log(`Listen on port ${port}`);
+  server.listen(port, host, () => {
+    console.log(`Listen on http://${host}:${port}`);
   });
 
   server.on('error', (err) => {

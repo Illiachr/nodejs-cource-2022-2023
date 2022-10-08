@@ -2,20 +2,17 @@
 
 const fsp = require('node:fs').promises;
 const path = require('node:path');
-const config = require('./config.json');
-const server = require(config.transport);
-const staticServer = require('./static.js');
-const load = require('./load.js');
-const db = require('./db.js');
-const hash = require('./hash.js');
-const console = require(config.logger);
-
-// const PORT = 8000;
-// const API_PORT = 8001;
-// const BASE_PATH = '/';
-// const ctxPathIdx = BASE_PATH.length === 1 ?
-//   BASE_PATH.length :
-//   BASE_PATH.length + 1;
+const config = require('./configuration/config.js');
+const loggerPath = `./lib/${config.logger.provider}.js`;
+const logDir = path.join(process.cwd(), `./${config.logger.dir}`);
+const console = require(loggerPath)(logDir, config.logger.tty);
+const db = require('./lib/db.js')(config.db);
+const hash = require('./lib/hash.js');
+const load = require('./lib/load.js')(config.sandbox);
+const staticServer = require('./lib/static.js');
+const { protocol, framework } = config.transport;
+const serverPath = `./lib/transport/${protocol}/${framework}.js`;
+const server = require(serverPath);
 
 const sandbox = {
   console: Object.freeze(console),
@@ -34,7 +31,6 @@ const routing = {};
     routing[serviceName] = await load(filePath, sandbox);
   }
 
-  // server(routing, PORT, ctxPathIdx);
-  staticServer('./static', config.staticPort);
-  server(routing, config.apiPort);
+  staticServer('./static', console, config.static);
+  server(routing, console, config.api);
 })();
