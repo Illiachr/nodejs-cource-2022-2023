@@ -14,9 +14,10 @@ module.exports = {
     timeout: 5000,
     displayErrors: false
   },
+  // ./transport/{{protocol}}/{{framework}}.js
   transport: {
-    protocol: 'http',
-    framework: 'fastify'
+    protocol: 'http', // protocol directory name
+    framework: 'fastifyRpc' // transport module name
   },
   db: {
     'host': '127.0.0.1',
@@ -25,8 +26,9 @@ module.exports = {
     'user': 'marcus',
     'password': 'marcus'
   },
+  // ./{{provider}}.js
   logger: {
-    provider: 'pino',
-    dir: './log'
+    provider: 'pino', // logger module name
+    dir: './log' // logs output
   }
 };

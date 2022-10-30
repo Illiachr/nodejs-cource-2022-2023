@@ -45,40 +45,20 @@ transport.http = (url) => (structure) => {
     const service = structure[serviceName];
     const methods = Object.keys(service);
     for (const methodName of methods) {
-      const argsSchema = structure[serviceName][methodName];
+      const params = service[methodName];
       api[serviceName][methodName] = (...args) =>
         new Promise((resolve, reject) => {
-          const method = crud[methodName];
-          const uriParts = [basePath, serviceName];
-          const options = { method };
-          const query = {};
-          let payload = {};
-          for (const [i, key] of argsSchema.entries()) {
-            if (key === 'id') {
-              uriParts.push(args[i]);
-              continue;
-            }
-            if (key === 'mask') {
-              query.mask = args[i];
-              continue;
-            }
-            if (key === 'record') payload = {
-              ...payload,
-              ...args[i]
-            };
-          }
-          let uri = uriParts.join('/');
-          if (Object.keys(query).length > 0)
-            uri = `${uri}?${new URLSearchParams(query)}`;
-          if (Object.keys(payload).length > 0)
-            options.body = JSON.stringify(payload);
-          console.log({ argsSchema, uri, method, options });
-          fetch(uri, options)
+          const uri = [basePath, serviceName, methodName];
+          if (args.length > 0 && params[0] === 'id') uri.push(args.shift());
+          const options = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ args })
+          };
+          fetch(uri.join('/'), options)
             .then((res) => {
-              const { status } = res;
-              if (!regex.test(status)) {
-                return reject(new Error(`Status Code: ${status}`));
-              }
+              if (!regex.test(res.status))
+                reject(new Error(`Status Code: ${res.status}`));
               resolve(res.json());
             });
         });
